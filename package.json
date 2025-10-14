@@ -1,0 +1,14 @@
+{
+  "name": "mpc-contract",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MPC SNIP Contract for Secret Network",
+  "scripts": {
+    "deploy": "node deploy.js",
+    "setup-nodes": "node createEnv.js"
+  },
+  "dependencies": {
+    "secretjs": "^1.21.2",
+    "dotenv": "^16.3.1"
+  }
+}

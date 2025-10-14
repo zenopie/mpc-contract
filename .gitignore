@@ -1,0 +1,42 @@
+# Build results
+/target
+Cargo.lock
+contract.wasm*
+contract.wasm.gz*
+optimized-wasm/
+
+# Cargo+Git helper file (https://github.com/rust-lang/cargo/blob/0.44.1/src/cargo/sources/git/utils.rs#L320-L327)
+.cargo-ok
+
+# Text file backups
+**/*.rs.bk
+
+# macOS
+.DS_Store
+
+# IDEs
+*.iml
+.idea
+
+# ViM
+*.swp
+
+# Integration tests
+tests/node_modules/*
+
+node/
+
+# Secrets and Personal Info
+.env*
+!.env.example
+mpc-node/.env*
+!mpc-node/.env.example
+deployment.json
+frontend/deployment.json
+
+# Logs
+*.log
+
+# Node modules
+node_modules/
+mpc-node/node_modules/
