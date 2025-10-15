@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import nacl from 'tweetnacl';
-import secrets from 'secrets.js-grempe';
 
 // Simple UTF8 encoding/decoding
 function utf8ToBytes(str) {
@@ -16,28 +15,18 @@ function base64Decode(str) {
 }
 
 // ============================================================================
-// SHAMIR'S SECRET SHARING (using secrets.js-grempe)
+// SHAMIR'S SECRET SHARING - Manual Implementation
 // ============================================================================
 
 /**
  * Convert hex string share to numeric value for validation
- * @param {string} hexShare - Hex-encoded share from secrets.js
+ * @param {string} hexShare - Hex-encoded share from manual SSS
  * @returns {number} Numeric value for arithmetic validation
  */
 export function hexShareToNumber(hexShare) {
-    // Extract share value (skip 2-char share ID prefix if present)
-    const shareValue = hexShare.length > 16 ? hexShare.substring(2) : hexShare;
-    return parseInt(shareValue, 16);
-}
-
-/**
- * Combine hex shares to reconstruct secret
- * @param {Array<string>} hexShares - Array of hex-encoded shares
- * @returns {number} Reconstructed secret
- */
-export function reconstructSecret(hexShares) {
-    const secretHex = secrets.combine(hexShares);
-    return parseInt(secretHex, 16);
+    // Remove '0x' prefix if present
+    const cleanHex = hexShare.startsWith('0x') ? hexShare.substring(2) : hexShare;
+    return parseInt(cleanHex, 16);
 }
 
 // ============================================================================

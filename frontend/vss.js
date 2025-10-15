@@ -3,14 +3,15 @@
 // ============================================================================
 
 /**
- * Generate cryptographically secure random integer in range [-500000, 500000]
+ * Generate cryptographically secure random integer in range [0, 1000000]
  * Uses Web Crypto API for CSPRNG
+ * Note: Returns only positive values for hex encoding compatibility
  */
 function secureRandomInt() {
     const range = 1000000;
     const randomBytes = new Uint32Array(1);
     crypto.getRandomValues(randomBytes);
-    return (randomBytes[0] % range) - 500000;
+    return randomBytes[0] % range; // Always positive
 }
 
 /**
@@ -30,30 +31,40 @@ function evaluatePolynomial(coefficients, x) {
 }
 
 /**
- * Generate Shamir secret sharing using secrets.js library
+ * Generate Shamir secret sharing using polynomial evaluation
  * @param {number} secret - The secret to share (e.g., balance)
- * @param {number} threshold - Minimum shares needed to reconstruct
- * @param {number} numShares - Number of shares to generate
- * @returns {{shares: string[], hexShares: string[]}} - Hex-encoded shares
+ * @param {number} threshold - Minimum shares needed to reconstruct (k)
+ * @param {number} numShares - Number of shares to generate (n)
+ * @returns {{shares: number[], hexShares: string[], polynomial: number[]}} - Shares and polynomial
  */
 function generateShamirShares(secret, threshold, numShares) {
-    // Convert secret to hex string (secrets.js requires hex input)
-    const secretHex = secret.toString(16).padStart(16, '0');
+    // 1. Generate polynomial P(X) of degree (threshold - 1) where P(0) = secret
+    // P(X) = secret + a1*X + a2*X^2 + ... + a(t-1)*X^(t-1)
+    const polynomial = [secret];
 
-    // Generate shares using secrets.js (returns array of hex strings)
-    const hexShares = secrets.share(secretHex, numShares, threshold);
+    // Generate random coefficients for terms X^1 through X^(threshold-1)
+    for (let i = 1; i < threshold; i++) {
+        polynomial.push(secureRandomInt());
+    }
 
-    // For VSS polynomial construction, we need numeric values
-    // Extract numeric values from hex shares (skip 2-char share ID prefix)
-    const numericShares = hexShares.map(hexShare => {
-        const shareValue = hexShare.substring(2);
-        return parseInt(shareValue, 16);
-    });
+    // 2. Evaluate polynomial at points 1, 2, 3, ..., n to generate shares
+    const numericShares = [];
+    const hexShares = [];
 
-    // Return both formats
+    for (let x = 1; x <= numShares; x++) {
+        const shareValue = evaluatePolynomial(polynomial, x);
+        numericShares.push(shareValue);
+
+        // Convert to hex string (pad to 16 chars for consistency)
+        const hexShare = shareValue.toString(16).padStart(16, '0');
+        hexShares.push(hexShare);
+    }
+
+    // Return numeric shares, hex shares, and polynomial coefficients
     return {
-        shares: numericShares,  // For VSS computation
-        hexShares: hexShares     // For sending to contract
+        shares: numericShares,    // For VSS computation
+        hexShares: hexShares,      // For sending to contract
+        polynomial: polynomial     // For debugging/testing
     };
 }
 
@@ -77,14 +88,16 @@ async function hashCommitment(v, r, gamma) {
  * @returns {Promise<{shares, gammas, commitments, proofPolynomial, challenge}>}
  */
 async function generateVSSProof(secret, threshold, numNodes) {
-    // 1. Generate Shamir sharing polynomial P(X) where P(0) = secret using secrets.js
+    // 1. Generate Shamir sharing polynomial P(X) where P(0) = secret
     const pResult = generateShamirShares(secret, threshold, numNodes);
-    const pShares = pResult.shares;  // numeric values for VSS
-    const pHexShares = pResult.hexShares;  // hex strings for contract
+    const pShares = pResult.shares;        // P(i) numeric values for VSS
+    const pHexShares = pResult.hexShares;  // P(i) hex strings for contract
+    const pPolynomial = pResult.polynomial; // P(X) coefficients
 
     // 2. Generate auxiliary polynomial R(X) of same degree
     const rResult = generateShamirShares(0, threshold, numNodes);
-    const rShares = rResult.shares;
+    const rShares = rResult.shares;        // R(i) values
+    const rPolynomial = rResult.polynomial; // R(X) coefficients
 
     // 3. Generate random gamma values for each node using CSPRNG
     const gammas = [];
@@ -114,23 +127,23 @@ async function generateVSSProof(secret, threshold, numNodes) {
     const d = Number(challenge % BigInt(1000000)); // Reduce to reasonable size
 
     // 6. Compute proof polynomial Z(X) = R(X) + d·P(X)
-    // Note: secrets.js doesn't expose polynomial coefficients directly
-    // For VSS we only need Z(i) values, not the full polynomial
-    // We'll compute hex-encoded Z values for the contract
-    const zHexValues = [];
-    for (let i = 0; i < numNodes; i++) {
-        const zValue = Math.floor(rShares[i] + d * pShares[i]);
-        const zHex = zValue.toString(16);
-        zHexValues.push(zHex);
+    // Combine polynomial coefficients: Z = [R[0] + d*P[0], R[1] + d*P[1], ...]
+    const zPolynomial = [];
+    for (let i = 0; i < threshold; i++) {
+        zPolynomial.push(Math.floor(rPolynomial[i] + d * pPolynomial[i]));
     }
 
+    // Convert polynomial coefficients to hex for contract
+    const zHexCoeffs = zPolynomial.map(coeff => coeff.toString(16).padStart(16, '0'));
+
     return {
-        shares: pHexShares,      // v_i = P(i) - hex-encoded secret shares for contract
-        gammas: gammaHexShares,  // γ_i - hex-encoded randomness for contract
+        shares: pHexShares,        // v_i = P(i) - hex-encoded secret shares for contract
+        gammas: gammaHexShares,    // γ_i - hex-encoded randomness for contract
         commitments: commitments,  // c_i - public commitments
-        proofPolynomial: zHexValues,   // Z(i) - hex-encoded proof values for contract
-        challenge: d,         // d - challenge value (for debugging)
-        R: rShares,           // R(i) values (for debugging/testing)
+        proofPolynomial: zHexCoeffs, // Z(X) coefficients - hex-encoded for contract
+        challenge: d,              // d - challenge value (for debugging)
+        P: pPolynomial,            // P(X) coefficients (for debugging/testing)
+        R: rPolynomial,            // R(X) coefficients (for debugging/testing)
     };
 }
 
