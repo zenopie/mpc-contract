@@ -163,8 +163,8 @@ async function loadBalance() {
         });
 
         if (result.commitment) {
-            // In production: fetch encrypted state from IPFS (result.commitment.ipfs_cid) and decrypt
-            // For POC: use encrypted localStorage to simulate IPFS storage
+            // In production: fetch encrypted state from decentralized storage
+            // For POC: use encrypted localStorage
             const storageKey = `mpc_state_${walletAddress}`;
             const storedState = localStorage.getItem(storageKey);
 
@@ -183,28 +183,28 @@ async function loadBalance() {
             } else {
                 // Commitment exists but no local state (user switched browsers/devices)
                 document.getElementById('balanceAmount').textContent = '? (Encrypted)';
-                showStatus('State found on-chain but not locally. In production, would fetch from IPFS: ' + result.commitment.ipfs_cid, 'info');
+                showStatus('State found on-chain but not locally. In production, would fetch encrypted state from decentralized storage.', 'info');
             }
         } else {
-            document.getElementById('balanceAmount').textContent = '0 (Not Initialized)';
-            showStatus('Balance not initialized. Please initialize first.', 'info');
+            document.getElementById('balanceAmount').textContent = '0 (No Deposit)';
+            showStatus('No balance found. Make your first deposit to the MPC bridge.', 'info');
         }
     } catch (error) {
         console.log('No state commitment found:', error);
-        document.getElementById('balanceAmount').textContent = '0 (Not Initialized)';
+        document.getElementById('balanceAmount').textContent = '0 (No Deposit)';
     }
 }
 
-// Initialize balance
-window.initializeBalance = async function(event) {
+// Deposit tokens to MPC bridge
+window.deposit = async function(event) {
     event.preventDefault();
 
-    const initialBalance = parseInt(document.getElementById('initialBalance').value);
-    const btn = document.getElementById('initBtn');
+    const depositAmount = parseInt(document.getElementById('depositAmount').value);
+    const btn = document.getElementById('depositBtn');
 
     try {
         btn.disabled = true;
-        btn.innerHTML = '<span class="loading"></span> Initializing...';
+        btn.innerHTML = '<span class="loading"></span> Depositing...';
 
         showStatus('Getting MPC nodes from contract...', 'info');
 
@@ -223,11 +223,11 @@ window.initializeBalance = async function(event) {
 
         console.log(`Creating shares for ${numNodes} nodes (threshold: ${stateResult.state.threshold})`);
 
-        showStatus('Creating VSS proof for balance...', 'info');
+        showStatus('Creating VSS proof for deposit...', 'info');
 
         // Generate VSS proof for the new balance (Baghery's hash-based scheme)
         const threshold = stateResult.state.threshold;
-        const vssProof = await VSSUtils.generateVSSProof(initialBalance, threshold, numNodes);
+        const vssProof = await VSSUtils.generateVSSProof(depositAmount, threshold, numNodes);
 
         console.log('VSS Proof generated:', {
             shares: vssProof.shares,
@@ -244,12 +244,12 @@ window.initializeBalance = async function(event) {
         // Encrypt shares for each node using real nacl.box encryption
         const encryptedShares = stateResult.state.mpc_nodes.map((node, i) => {
             const shareData = {
-                old_balance_share: 0,
-                new_balance_share: vssProof.shares[i],
+                old_balance_share: '0',  // Hex string for zero
+                new_balance_share: vssProof.shares[i],  // Hex string from VSS
                 amount_share: vssProof.shares[i], // Positive for deposits (0 + amount = new_balance)
-                old_nonce_share: 0,
-                new_nonce_share: 0, // Nonce starts at 0
-                gamma: vssProof.gammas[i] // VSS randomness for commitment
+                old_nonce_share: '0',  // Hex string for zero
+                new_nonce_share: '0', // Nonce starts at 0
+                gamma: vssProof.gammas[i] // VSS randomness (hex string)
             };
 
             // Convert node public key from array to hex string (browser-compatible)
@@ -278,7 +278,7 @@ window.initializeBalance = async function(event) {
                 transition: {
                     user_address: walletAddress,
                     old_state_root: Array(32).fill(0),
-                    new_state_root: hashBalance(initialBalance, 0),
+                    new_state_root: hashBalance(depositAmount, 0),
                     merkle_proof: [],
                     new_state_ipfs: `Qm${randomHash()}`,
                     user_signature: userPublicKeyArray, // Contains user encryption public key for POC
@@ -289,7 +289,7 @@ window.initializeBalance = async function(event) {
             }
         };
 
-        console.log('Submitting transaction:', {
+        console.log('Submitting deposit transaction:', {
             contractAddress: CONFIG.contractAddress,
             codeHash: CONFIG.codeHash,
             msg: contractMsg
@@ -326,19 +326,19 @@ window.initializeBalance = async function(event) {
         const validationId = validationIdAttr?.value || `${tx.height}-${walletAddress}`;
 
         console.log('🔑 Validation ID:', validationId);
-        console.log('📋 MPC nodes should now validate this transition');
+        console.log('📋 MPC nodes should now validate this deposit');
 
-        showStatus(`Balance initialized! Validation ID: ${validationId}`, 'success');
-        addTxToHistory(`Initialized balance: ${initialBalance}`, tx.transactionHash);
+        showStatus(`Deposit successful! Validation ID: ${validationId}`, 'success');
+        addTxToHistory(`Deposited ${depositAmount} tokens`, tx.transactionHash);
 
-        userBalance = initialBalance;
+        userBalance = depositAmount;
         userNonce = 0;
-        document.getElementById('balanceAmount').textContent = initialBalance;
+        document.getElementById('balanceAmount').textContent = depositAmount;
 
-        // Save encrypted state to localStorage (simulates encrypted IPFS storage in POC)
+        // Save encrypted state to localStorage
         const storageKey = `mpc_state_${walletAddress}`;
         const encryptedState = encryptState({
-            balance: initialBalance,
+            balance: depositAmount,
             nonce: 0,
             updatedAt: Date.now()
         });
@@ -346,176 +346,11 @@ window.initializeBalance = async function(event) {
         console.log('✓ State encrypted and saved to localStorage');
 
     } catch (error) {
-        console.error('Init error:', error);
-        showStatus(`Initialization failed: ${error.message}`, 'error');
+        console.error('Deposit error:', error);
+        showStatus(`Deposit failed: ${error.message}`, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Initialize';
-    }
-};
-
-// Send tokens
-window.sendTokens = async function(event) {
-    event.preventDefault();
-
-    const recipient = document.getElementById('recipient').value;
-    const amount = parseInt(document.getElementById('amount').value);
-    const btn = document.getElementById('sendBtn');
-
-    try {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="loading"></span> Sending...';
-
-        if (!userBalance || userBalance < amount) {
-            throw new Error('Insufficient balance');
-        }
-
-        showStatus('Getting MPC nodes from contract...', 'info');
-
-        // Get MPC nodes first to know how many shares to create
-        const stateResult = await secretjs.query.compute.queryContract({
-            contract_address: CONFIG.contractAddress,
-            code_hash: CONFIG.codeHash,
-            query: { get_state: {} }
-        });
-
-        const numNodes = stateResult.state.mpc_nodes.length;
-
-        if (!stateResult.state || numNodes === 0) {
-            throw new Error('MPC nodes not registered yet. Please wait for nodes to start.');
-        }
-
-        console.log(`Creating shares for ${numNodes} nodes (threshold: ${stateResult.state.threshold})`);
-
-        showStatus('Creating VSS proofs for transaction...', 'info');
-
-        const threshold = stateResult.state.threshold;
-
-        // Generate VSS proofs for old balance, new balance, and amount
-        const oldBalanceVSS = await VSSUtils.generateVSSProof(userBalance, threshold, numNodes);
-        const newBalance = userBalance - amount;
-        const newBalanceVSS = await VSSUtils.generateVSSProof(newBalance, threshold, numNodes);
-
-        // For simplicity, use regular additive sharing for amount and nonce
-        const amountShares = createSecretShares(amount, numNodes);
-        const oldNonceShares = createSecretShares(userNonce, numNodes);
-        const newNonceShares = oldNonceShares.map(s => s + 1);
-
-        console.log('VSS Proofs generated for send:', {
-            oldBalance: oldBalanceVSS.shares,
-            newBalance: newBalanceVSS.shares,
-            amount: amountShares
-        });
-
-        showStatus('Encrypting shares for MPC nodes...', 'info');
-
-        // Get user encryption keypair
-        const userKeyPair = getUserEncryptionKeyPair();
-
-        // Encrypt shares for each node using real nacl.box encryption
-        const encryptedShares = stateResult.state.mpc_nodes.map((node, i) => {
-            const shareData = {
-                old_balance_share: oldBalanceVSS.shares[i],
-                new_balance_share: newBalanceVSS.shares[i],
-                amount_share: -amountShares[i], // Negative for sends/withdrawals (old + (-amount) = new)
-                old_nonce_share: oldNonceShares[i],
-                new_nonce_share: newNonceShares[i],
-                gamma: newBalanceVSS.gammas[i] // VSS randomness for new balance commitment
-            };
-
-            // Convert node public key from array to hex string (browser-compatible)
-            const nodePublicKeyHex = Array.from(node.public_key)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-
-            return {
-                node_id: node.node_id,
-                encrypted_data: encryptForNode(shareData, nodePublicKeyHex, userKeyPair)
-            };
-        });
-
-        showStatus('Submitting transaction...', 'info');
-
-        // Prepare contract message
-        // For POC: store user's encryption public key in user_signature field
-        const userPublicKeyArray = Array.from(userKeyPair.publicKey);
-        // Pad to 64 bytes if needed
-        while (userPublicKeyArray.length < 64) {
-            userPublicKeyArray.push(0);
-        }
-
-        const contractMsg = {
-            submit_state_transition: {
-                transition: {
-                    user_address: walletAddress,
-                    old_state_root: hashBalance(userBalance, userNonce),
-                    new_state_root: hashBalance(userBalance - amount, userNonce + 1),
-                    merkle_proof: [],
-                    new_state_ipfs: `Qm${randomHash()}`,
-                    user_signature: userPublicKeyArray, // Contains user encryption public key for POC
-                    encrypted_shares: encryptedShares,
-                    vss_commitments: newBalanceVSS.commitments, // Hash commitments for new balance VSS
-                    vss_proof_polynomial: newBalanceVSS.proofPolynomial // Z(X) coefficients for new balance
-                }
-            }
-        };
-
-        console.log('Submitting send transaction:', {
-            contractAddress: CONFIG.contractAddress,
-            codeHash: CONFIG.codeHash,
-            msg: contractMsg
-        });
-
-        // Create MsgExecuteContract
-        const { MsgExecuteContract } = window.secretjs;
-        const msg = new MsgExecuteContract({
-            sender: secretjs.address,
-            contract_address: CONFIG.contractAddress,
-            code_hash: CONFIG.codeHash,
-            msg: contractMsg,
-        });
-
-        // Broadcast transaction
-        const tx = await secretjs.tx.broadcast([msg], {
-            gasLimit: 1_000_000,
-            gasPriceInFeeDenom: 0.1,
-            feeDenom: "uscrt",
-            broadcastMode: "Sync",
-        });
-
-        console.log("Transaction response:", tx);
-
-        if (tx.code !== 0) {
-            throw new Error(`Transaction failed: ${tx.rawLog}`);
-        }
-
-        showStatus('Transaction submitted! Waiting for MPC validation...', 'success');
-        addTxToHistory(`Sent ${amount} tokens to ${recipient.slice(0, 20)}...`, tx.transactionHash);
-
-        userBalance -= amount;
-        userNonce += 1;
-        document.getElementById('balanceAmount').textContent = userBalance;
-
-        // Save encrypted state to localStorage (simulates encrypted IPFS storage in POC)
-        const storageKey = `mpc_state_${walletAddress}`;
-        const encryptedState = encryptState({
-            balance: userBalance,
-            nonce: userNonce,
-            updatedAt: Date.now()
-        });
-        localStorage.setItem(storageKey, encryptedState);
-        console.log('✓ State encrypted and saved to localStorage');
-
-        // Reset form
-        document.getElementById('recipient').value = '';
-        document.getElementById('amount').value = '';
-
-    } catch (error) {
-        console.error('Send error:', error);
-        showStatus(`Send failed: ${error.message}`, 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Send Tokens';
+        btn.textContent = 'Deposit to MPC Bridge';
     }
 };
 
@@ -569,21 +404,6 @@ function encryptForNode(data, nodePublicKeyHex, userKeyPair) {
     combined.set(encrypted, nonce.length);
 
     return Array.from(combined);
-}
-
-// Helper: Create secret shares (simplified additive sharing)
-function createSecretShares(secret, numShares) {
-    const shares = [];
-    let sum = 0;
-
-    for (let i = 0; i < numShares - 1; i++) {
-        const share = Math.floor(Math.random() * 1000000) - 500000;
-        shares.push(share);
-        sum += share;
-    }
-
-    shares.push(secret - sum);
-    return shares;
 }
 
 // Helper: Hash balance and nonce

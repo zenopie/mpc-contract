@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPC SNIP - Privacy-Preserving Balances</title>
+    <title>MPC Bridge - Privacy-Preserving Deposits</title>
     <style>
         * {
             margin: 0;
@@ -239,8 +239,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 MPC SNIP</h1>
-            <p>Privacy-Preserving Balances with Multi-Party Computation</p>
+            <h1>🔐 MPC Bridge</h1>
+            <p>Privacy-Preserving Deposits with Multi-Party Computation</p>
         </div>
 
         <!-- Wallet Connection -->
@@ -262,13 +262,13 @@
             <!-- Balance Display -->
             <div class="card">
                 <div class="balance-display">
-                    <div class="balance-label">Your Private Balance</div>
+                    <div class="balance-label">Bridge Balance</div>
                     <div class="balance-amount" id="balanceAmount">---</div>
-                    <div class="balance-label">SNIP Tokens</div>
+                    <div class="balance-label">Tokens</div>
                     <div class="privacy-badge">🔒 Private (MPC-Secured)</div>
                 </div>
                 <div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 10px;">
-                    Your balance is split across 3 MPC nodes. No single node knows your actual balance.
+                    Your deposited balance is split across 3 MPC nodes. No single node knows your actual balance.
                 </div>
             </div>
 
@@ -295,37 +295,18 @@
             </div>
 
             <!-- Actions -->
-            <div class="grid">
-                <!-- Send Tokens -->
-                <div class="card">
-                    <h2>Send Tokens</h2>
-                    <form onsubmit="sendTokens(event)">
-                        <div class="form-group">
-                            <label>Recipient Address</label>
-                            <input type="text" id="recipient" placeholder="secret1..." required>
-                        </div>
-                        <div class="form-group">
-                            <label>Amount</label>
-                            <input type="number" id="amount" placeholder="100" min="1" required>
-                        </div>
-                        <button type="submit" id="sendBtn">Send Tokens</button>
-                    </form>
-                </div>
-
-                <!-- Initialize Balance -->
-                <div class="card">
-                    <h2>Initialize Balance</h2>
-                    <form onsubmit="initializeBalance(event)">
-                        <div class="form-group">
-                            <label>Initial Balance</label>
-                            <input type="number" id="initialBalance" placeholder="1000" min="0" required>
-                        </div>
-                        <button type="submit" id="initBtn">Initialize</button>
-                        <div style="margin-top: 10px; color: #666; font-size: 0.9em;">
-                            Sets up your private balance with secret shares
-                        </div>
-                    </form>
-                </div>
+            <div class="card" style="max-width: 600px; margin: 0 auto;">
+                <h2>Deposit Tokens</h2>
+                <form onsubmit="deposit(event)">
+                    <div class="form-group">
+                        <label>Deposit Amount</label>
+                        <input type="number" id="depositAmount" placeholder="1000" min="1" required>
+                    </div>
+                    <button type="submit" id="depositBtn">Deposit to MPC Bridge</button>
+                    <div style="margin-top: 15px; color: #666; font-size: 0.9em;">
+                        Deposits tokens into the privacy-preserving MPC bridge. Your balance will be split across 3 MPC nodes using secret sharing.
+                    </div>
+                </form>
             </div>
 
             <!-- Transaction History -->
@@ -354,6 +335,8 @@
     <script src="https://unpkg.com/secretjs/dist/browser.js"></script>
     <!-- Load tweetnacl for encryption -->
     <script src="https://unpkg.com/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <!-- Load secrets.js for Shamir's Secret Sharing -->
+    <script src="https://unpkg.com/secrets.js-grempe@2.0.0/secrets.min.js"></script>
     <!-- Load VSS utilities -->
     <script src="vss.js"></script>
     <script src="loadMPCStatus.js"></script>

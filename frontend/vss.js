@@ -30,29 +30,31 @@ function evaluatePolynomial(coefficients, x) {
 }
 
 /**
- * Generate Shamir secret sharing polynomial
+ * Generate Shamir secret sharing using secrets.js library
  * @param {number} secret - The secret to share (e.g., balance)
- * @param {number} threshold - Degree of polynomial (threshold - 1)
+ * @param {number} threshold - Minimum shares needed to reconstruct
  * @param {number} numShares - Number of shares to generate
- * @returns {{shares: number[], polynomial: number[]}}
+ * @returns {{shares: string[], hexShares: string[]}} - Hex-encoded shares
  */
 function generateShamirShares(secret, threshold, numShares) {
-    // Generate random polynomial P(X) where P(0) = secret
-    const polynomial = [secret];
+    // Convert secret to hex string (secrets.js requires hex input)
+    const secretHex = secret.toString(16).padStart(16, '0');
 
-    // Generate random coefficients for degree 1 to threshold-1 using CSPRNG
-    for (let i = 1; i < threshold; i++) {
-        const coeff = secureRandomInt();
-        polynomial.push(coeff);
-    }
+    // Generate shares using secrets.js (returns array of hex strings)
+    const hexShares = secrets.share(secretHex, numShares, threshold);
 
-    // Evaluate polynomial at points 1, 2, ..., n to get shares
-    const shares = [];
-    for (let i = 1; i <= numShares; i++) {
-        shares.push(evaluatePolynomial(polynomial, i));
-    }
+    // For VSS polynomial construction, we need numeric values
+    // Extract numeric values from hex shares (skip 2-char share ID prefix)
+    const numericShares = hexShares.map(hexShare => {
+        const shareValue = hexShare.substring(2);
+        return parseInt(shareValue, 16);
+    });
 
-    return { shares, polynomial };
+    // Return both formats
+    return {
+        shares: numericShares,  // For VSS computation
+        hexShares: hexShares     // For sending to contract
+    };
 }
 
 /**
@@ -75,16 +77,24 @@ async function hashCommitment(v, r, gamma) {
  * @returns {Promise<{shares, gammas, commitments, proofPolynomial, challenge}>}
  */
 async function generateVSSProof(secret, threshold, numNodes) {
-    // 1. Generate Shamir sharing polynomial P(X) where P(0) = secret
-    const { shares: pShares, polynomial: P } = generateShamirShares(secret, threshold, numNodes);
+    // 1. Generate Shamir sharing polynomial P(X) where P(0) = secret using secrets.js
+    const pResult = generateShamirShares(secret, threshold, numNodes);
+    const pShares = pResult.shares;  // numeric values for VSS
+    const pHexShares = pResult.hexShares;  // hex strings for contract
 
     // 2. Generate auxiliary polynomial R(X) of same degree
-    const { shares: rShares, polynomial: R } = generateShamirShares(0, threshold, numNodes);
+    const rResult = generateShamirShares(0, threshold, numNodes);
+    const rShares = rResult.shares;
 
     // 3. Generate random gamma values for each node using CSPRNG
     const gammas = [];
+    const gammaHexShares = [];
     for (let i = 0; i < numNodes; i++) {
-        gammas.push(secureRandomInt());
+        const gamma = secureRandomInt();
+        gammas.push(gamma);
+        // Convert gamma to hex string for contract
+        const gammaHex = gamma.toString(16).padStart(16, '0');
+        gammaHexShares.push(gammaHex);
     }
 
     // 4. Compute commitments c_i = H(P(i) || R(i) || γ_i)
@@ -104,18 +114,21 @@ async function generateVSSProof(secret, threshold, numNodes) {
     const d = Number(challenge % BigInt(1000000)); // Reduce to reasonable size
 
     // 6. Compute proof polynomial Z(X) = R(X) + d·P(X)
-    const Z = [];
-    for (let i = 0; i < Math.max(R.length, P.length); i++) {
-        const rCoeff = i < R.length ? R[i] : 0;
-        const pCoeff = i < P.length ? P[i] : 0;
-        Z.push(Math.floor(rCoeff + d * pCoeff));
+    // Note: secrets.js doesn't expose polynomial coefficients directly
+    // For VSS we only need Z(i) values, not the full polynomial
+    // We'll compute hex-encoded Z values for the contract
+    const zHexValues = [];
+    for (let i = 0; i < numNodes; i++) {
+        const zValue = Math.floor(rShares[i] + d * pShares[i]);
+        const zHex = zValue.toString(16);
+        zHexValues.push(zHex);
     }
 
     return {
-        shares: pShares,      // v_i = P(i) - the actual secret shares
-        gammas: gammas,       // γ_i - randomness for commitments
+        shares: pHexShares,      // v_i = P(i) - hex-encoded secret shares for contract
+        gammas: gammaHexShares,  // γ_i - hex-encoded randomness for contract
         commitments: commitments,  // c_i - public commitments
-        proofPolynomial: Z,   // Z(X) - public proof polynomial
+        proofPolynomial: zHexValues,   // Z(i) - hex-encoded proof values for contract
         challenge: d,         // d - challenge value (for debugging)
         R: rShares,           // R(i) values (for debugging/testing)
     };

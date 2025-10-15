@@ -79,8 +79,8 @@ export function verifyVSSShare(nodeId, share, gamma, commitments, proofPolynomia
 /**
  * Verify VSS proof for a transition
  * @param {number} nodeId - This node's ID
- * @param {object} shares - Decrypted shares with gamma field
- * @param {object} transition - State transition with vss_commitments and vss_proof_polynomial
+ * @param {object} shares - Decrypted shares with gamma field (numeric values)
+ * @param {object} transition - State transition with vss_commitments and vss_proof_polynomial (hex strings)
  * @returns {{valid: boolean, reason: string}}
  */
 export function verifyTransitionVSS(nodeId, shares, transition) {
@@ -100,13 +100,20 @@ export function verifyTransitionVSS(nodeId, shares, transition) {
         };
     }
 
+    // Convert hex string polynomial coefficients to numbers
+    const polynomialCoeffs = transition.vss_proof_polynomial.map(hexCoeff => {
+        // Handle hex strings with or without '0x' prefix
+        const cleanHex = hexCoeff.startsWith('0x') ? hexCoeff.substring(2) : hexCoeff;
+        return parseInt(cleanHex, 16);
+    });
+
     // Verify VSS for the new balance share
     const vssValid = verifyVSSShare(
         nodeId,
         shares.new_balance_share,
         shares.gamma,
         transition.vss_commitments,
-        transition.vss_proof_polynomial
+        polynomialCoeffs
     );
 
     if (!vssValid) {

@@ -1,4 +1,4 @@
-import { hashShares, decryptFromSender, generatePartialSignature } from './crypto.js';
+import { hashShares, decryptFromSender, generatePartialSignature, hexShareToNumber } from './crypto.js';
 import { verifyTransitionVSS } from './vss.js';
 
 // ============================================================================
@@ -31,7 +31,7 @@ export class MPCValidator {
                 this.privateKey
             );
 
-            console.log(`[Node ${this.nodeId}] Decrypted shares:`, {
+            console.log(`[Node ${this.nodeId}] Decrypted shares (hex):`, {
                 oldBalance: shares.old_balance_share,
                 newBalance: shares.new_balance_share,
                 amount: shares.amount_share,
@@ -40,8 +40,32 @@ export class MPCValidator {
                 gamma: shares.gamma
             });
 
+            // Convert hex string shares to numbers for validation
+            const oldBalanceNum = hexShareToNumber(shares.old_balance_share);
+            const newBalanceNum = hexShareToNumber(shares.new_balance_share);
+            const amountNum = hexShareToNumber(shares.amount_share);
+            const oldNonceNum = hexShareToNumber(shares.old_nonce_share);
+            const newNonceNum = hexShareToNumber(shares.new_nonce_share);
+            const gammaNum = hexShareToNumber(shares.gamma);
+
+            console.log(`[Node ${this.nodeId}] Converted shares (numeric):`, {
+                oldBalance: oldBalanceNum,
+                newBalance: newBalanceNum,
+                amount: amountNum,
+                oldNonce: oldNonceNum,
+                newNonce: newNonceNum,
+                gamma: gammaNum
+            });
+
             // 2. Verify VSS proof (Baghery's hash-based scheme)
-            const vssResult = verifyTransitionVSS(this.nodeId, shares, transition);
+            const vssResult = verifyTransitionVSS(this.nodeId, {
+                old_balance_share: oldBalanceNum,
+                new_balance_share: newBalanceNum,
+                amount_share: amountNum,
+                old_nonce_share: oldNonceNum,
+                new_nonce_share: newNonceNum,
+                gamma: gammaNum
+            }, transition);
             if (!vssResult.valid) {
                 console.log(`[Node ${this.nodeId}] VSS verification failed:`, vssResult.reason);
                 return {
@@ -54,7 +78,7 @@ export class MPCValidator {
 
             // 3. Validate balance equation on shares
             // old_balance + amount = new_balance (amount positive for deposits, negative for withdrawals)
-            if (shares.old_balance_share + shares.amount_share !== shares.new_balance_share) {
+            if (oldBalanceNum + amountNum !== newBalanceNum) {
                 return {
                     valid: false,
                     reason: 'Balance equation failed on share',
@@ -63,9 +87,9 @@ export class MPCValidator {
             }
 
             // 4. Validate nonce incremented (skip for initialization when old_nonce = 0 and new_nonce = 0)
-            const isInitialization = (shares.old_balance_share === 0 && shares.old_nonce_share === 0 && shares.new_nonce_share === 0);
+            const isInitialization = (oldBalanceNum === 0 && oldNonceNum === 0 && newNonceNum === 0);
 
-            if (!isInitialization && shares.new_nonce_share !== shares.old_nonce_share + 1) {
+            if (!isInitialization && newNonceNum !== oldNonceNum + 1) {
                 return {
                     valid: false,
                     reason: 'Nonce not incremented correctly on share',
@@ -73,21 +97,15 @@ export class MPCValidator {
                 };
             }
 
-            // 5. Balance non-negativity check
-            // NOTE: Individual shares CAN be negative in additive secret sharing!
-            // Only the reconstructed secret (sum of all shares) needs to be non-negative.
-            // In production, use proper MPC comparison protocol to check reconstructed balance.
-            // For PoC, we skip this check since we can't reconstruct without all shares.
-
-            // 6. Verify hash commitments match shares
+            // 5. Verify hash commitments match shares
             const oldHashCommitment = hashShares(
-                shares.old_balance_share,
-                shares.old_nonce_share
+                oldBalanceNum,
+                oldNonceNum
             );
 
             const newHashCommitment = hashShares(
-                shares.new_balance_share,
-                shares.new_nonce_share
+                newBalanceNum,
+                newNonceNum
             );
 
             // Note: In production, verify these against Pedersen commitments
@@ -126,89 +144,6 @@ export class MPCValidator {
         }
     }
 
-    /**
-     * Validate a transfer (two state transitions)
-     * @param {object} senderTransition - Sender's state transition
-     * @param {object} recipientTransition - Recipient's state transition
-     * @param {string} senderEncryptedShares - Sender's encrypted shares
-     * @param {string} recipientEncryptedShares - Recipient's encrypted shares
-     * @param {Uint8Array} senderPublicKey - Sender's public key
-     * @param {Uint8Array} recipientPublicKey - Recipient's public key
-     * @returns {{valid: boolean, reason: string}}
-     */
-    validateTransfer(
-        senderTransition,
-        recipientTransition,
-        senderEncryptedShares,
-        recipientEncryptedShares,
-        senderPublicKey,
-        recipientPublicKey
-    ) {
-        try {
-            // Decrypt both shares
-            const senderShares = decryptFromSender(
-                senderEncryptedShares,
-                senderPublicKey,
-                this.privateKey
-            );
-
-            const recipientShares = decryptFromSender(
-                recipientEncryptedShares,
-                recipientPublicKey,
-                this.privateKey
-            );
-
-            // Validate sender loses amount (amount is negative for send)
-            const senderValid =
-                senderShares.old_balance_share + senderShares.amount_share ===
-                senderShares.new_balance_share;
-
-            // Validate recipient gains same amount (amount is positive for receive)
-            const recipientValid =
-                recipientShares.old_balance_share + recipientShares.amount_share ===
-                recipientShares.new_balance_share;
-
-            // Validate nonces
-            const senderNonceValid =
-                senderShares.new_nonce_share === senderShares.old_nonce_share + 1;
-
-            const recipientNonceValid =
-                recipientShares.new_nonce_share === recipientShares.old_nonce_share + 1;
-
-            if (!senderValid || !recipientValid || !senderNonceValid || !recipientNonceValid) {
-                return {
-                    valid: false,
-                    reason: 'Transfer validation failed on shares'
-                };
-            }
-
-            console.log(`[Node ${this.nodeId}] ✓ Transfer validation PASSED`);
-
-            return {
-                valid: true,
-                reason: 'Transfer valid on shares'
-            };
-
-        } catch (error) {
-            return {
-                valid: false,
-                reason: `Error: ${error.message}`
-            };
-        }
-    }
-
-    /**
-     * Simulate MPC computation of balance comparison
-     * In production: use proper MPC comparison protocol
-     * @param {number} share - This node's share
-     * @param {number} threshold - Threshold to compare against
-     * @returns {number} Share of comparison result (0 or 1)
-     */
-    mpcCompareShare(share, threshold) {
-        // Simplified: each node computes on their share
-        // Real MPC would not reveal individual comparisons
-        return share >= threshold ? 1 : 0;
-    }
 }
 
 // ============================================================================
@@ -226,15 +161,4 @@ export function extractNodeShares(transition, nodeId) {
         s => s.node_id === nodeId
     );
     return nodeShares ? nodeShares.encrypted_data : null;
-}
-
-/**
- * Verify all nodes in committee have provided shares
- * @param {object} transition - State transition
- * @param {Array<number>} nodeIds - Expected node IDs
- * @returns {boolean}
- */
-export function verifyAllSharesPresent(transition, nodeIds) {
-    const providedNodeIds = transition.encrypted_shares.map(s => s.node_id);
-    return nodeIds.every(id => providedNodeIds.includes(id));
 }

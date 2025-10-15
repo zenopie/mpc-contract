@@ -36,17 +36,18 @@ pub struct StateCommitment {
 }
 
 /// Secret shares sent to MPC nodes for validation
+/// Uses hex-encoded strings from Shamir's Secret Sharing library
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct SecretShares {
-    pub old_balance_share: i64,
-    pub new_balance_share: i64,
-    pub amount_share: i64,
-    pub old_nonce_share: i64,
-    pub new_nonce_share: i64,
+    pub old_balance_share: String,  // Hex-encoded share from SSS
+    pub new_balance_share: String,  // Hex-encoded share from SSS
+    pub amount_share: String,       // Hex-encoded share from SSS
+    pub old_nonce_share: String,    // Hex-encoded share from SSS
+    pub new_nonce_share: String,    // Hex-encoded share from SSS
 
     // VSS randomness (for hash-based commitment)
     #[serde(default)]
-    pub gamma: i64,  // γ_i - additional randomness for commitment
+    pub gamma: String,  // γ_i - hex-encoded randomness for commitment
 }
 
 /// State transition request
@@ -74,7 +75,7 @@ pub struct StateTransition {
     #[serde(default)]
     pub vss_commitments: Vec<Vec<u8>>,  // c_i = H(v_i || R(i) || γ_i) for each node
     #[serde(default)]
-    pub vss_proof_polynomial: Vec<i64>, // Z(X) = R(X) + d·P(X) coefficients [a0, a1, ..., at]
+    pub vss_proof_polynomial: Vec<String>, // Z(X) polynomial coefficients as hex strings
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

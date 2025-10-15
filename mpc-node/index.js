@@ -2,7 +2,7 @@ import { SecretNetworkClient, Wallet } from 'secretjs';
 import * as dotenv from 'dotenv';
 import http from 'http';
 import { MPCValidator, extractNodeShares } from './src/validator.js';
-import { generateKeyPair, publicKeyToHex, hexToUint8Array } from './src/crypto.js';
+import { generateKeyPair, publicKeyToHex } from './src/crypto.js';
 
 dotenv.config();
 
