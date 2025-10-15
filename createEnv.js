@@ -1,4 +1,8 @@
 import * as fs from 'fs';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env
+dotenv.config();
 
 // ============================================================================
 // CREATE MPC NODE ENVIRONMENT FILES
@@ -26,7 +30,10 @@ console.log('');
 // Number of nodes to create
 const numNodes = parseInt(process.env.NUM_NODES || '3');
 
-// Check if we have mnemonics
+// Get RPC URL from env or use default
+const rpcUrl = process.env.RPC_URL || 'https://lcd.erth.network';
+
+// Check if we have mnemonics from .env file
 const mnemonics = [];
 for (let i = 1; i <= numNodes; i++) {
     const mnemonic = process.env[`NODE${i}_MNEMONIC`];
@@ -36,8 +43,11 @@ for (let i = 1; i <= numNodes; i++) {
 }
 
 if (mnemonics.length === 0) {
-    console.log('⚠️  No mnemonics provided via environment variables');
+    console.log('⚠️  No mnemonics found in .env file');
     console.log('   Using placeholder mnemonics (update these before running!)');
+    console.log('');
+} else {
+    console.log(`✓ Found ${mnemonics.length} mnemonics in .env file`);
     console.log('');
 }
 
@@ -65,10 +75,7 @@ CONTRACT_CODE_HASH=${deployment.codeHash}
 
 # Network configuration
 CHAIN_ID=${deployment.chainId}
-RPC_URL=https://lcd.testnet.secretsaturn.net
-
-# Optional: Logging level
-LOG_LEVEL=info
+RPC_URL=${rpcUrl}
 `;
 
     fs.writeFileSync(envFile, envContent);
