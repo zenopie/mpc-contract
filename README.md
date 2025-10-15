@@ -1,6 +1,6 @@
 # MPC SNIP Contract - Privacy-Preserving State Management on Secret Network
 
-A complete Multi-Party Computation (MPC) system for managing private user state on Secret Network using secret sharing, threshold signatures, and stateless blockchain architecture.
+A complete Multi-Party Computation (MPC) system for managing private user state on Secret Network using Verifiable Secret Sharing (VSS) and threshold signatures.
 
 ## Overview
 
@@ -9,9 +9,9 @@ This project implements a privacy-preserving token system where:
 - **User state (balances, nonces) is kept off-chain** - Only commitments stored on-chain
 - **State is secret-shared across MPC nodes** - No single node knows full state
 - **Threshold validation** - Requires consensus from `t-of-n` nodes
-- **Zero-knowledge proofs** - Nodes validate without knowing actual values
+- **Verifiable Secret Sharing (VSS)** - Nodes validate on shares without knowing actual values
 - **Merkle tree state commitments** - Efficient proof of state inclusion
-- **IPFS storage** - Encrypted full state stored decentralized
+- **Encrypted localStorage** - User state encrypted and stored in browser
 
 ## Architecture
 
@@ -47,7 +47,6 @@ This project implements a privacy-preserving token system where:
          ┌──────────────────────────┐
          │     Blockchain State     │
          │  ✓ State root hash       │
-         │  ✓ IPFS CID              │
          │  ✓ Merkle proofs         │
          │  ✗ NOT actual balances   │
          └──────────────────────────┘
@@ -99,7 +98,9 @@ Bob: 500 tokens   ❌ PUBLIC!
 ```
 Blockchain State:
 Alice: commitment(0x3a7f...) ✓ PRIVATE
-       IPFS: QmABC... (encrypted)
+
+Browser localStorage:
+Alice: encrypted state (only she can decrypt)
 
 Node 1 has: share₁ of Alice's balance (meaningless alone)
 Node 2 has: share₂ of Alice's balance (meaningless alone)
@@ -298,9 +299,10 @@ await contract.finalizeTransition(validationId);
 {
   user_address: "alice",
   state_root: "0x3a7f...",  // Commitment, not balance!
-  ipfs_cid: "QmABC123",     // Encrypted state
   merkle_proof: [...]
 }
+
+// User's full state encrypted in browser localStorage
 ```
 
 ## Privacy Guarantees
@@ -310,8 +312,8 @@ await contract.finalizeTransition(validationId);
 | Balance visibility | ❌ Public | ✓ Private (shares only) |
 | Single point of trust | ❌ Yes | ✓ No (threshold) |
 | Transaction amounts | ❌ Public | ✓ Private (commitments) |
-| State storage | ❌ On-chain | ✓ Off-chain (IPFS) |
-| Validation | ❌ Reveals values | ✓ Zero-knowledge on shares |
+| State storage | ❌ On-chain | ✓ Off-chain (encrypted localStorage) |
+| Validation | ❌ Reveals values | ✓ VSS-based on shares |
 
 ## Security Model
 
@@ -402,7 +404,6 @@ This is a **proof-of-concept**. For production:
 - [ ] Batch validations
 - [ ] Optimistic rollups
 - [ ] State compression
-- [ ] IPFS pinning strategy
 - [ ] Node discovery protocol
 
 ### Features
